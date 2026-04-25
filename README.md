@@ -9,7 +9,7 @@ Once GitHub Pages finishes building: https://yashachaarya.github.io/long-nyan-ca
 
 ## How it works
 
-- Cat is anchored 1/4 from the left of the viewport, vertically centered, facing left.
+- Cat starts 1/4 from the right of the viewport at scroll=0, vertically centered, facing left. As you scroll right, the cat slides off to the left and the rainbow fills the screen.
 - Rainbow trail extends to the right. The document grows horizontally as more
   `.rainbow-piece` blocks are appended via `IntersectionObserver` watching the
   current last piece — same growth pattern as the Long Doge Challenge but

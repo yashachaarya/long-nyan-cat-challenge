@@ -91,7 +91,11 @@
     flex-direction: row;
     align-items: center;
     height: 100vh;
-    padding-left: 25vw;   /* cat starts ~1/4 from the left of the viewport */
+    padding-left: calc(75vw - 340px);
+    /* Cat's RIGHT edge sits at 75vw, leaving 1/4 of the viewport (25vw) of
+       empty space to the right of the cat at scrollX=0. 340px = .nyan-cat
+       width. As the user scrolls right, the cat slides off-left and the
+       rainbow trail fills the viewport. */
     width: max-content;   /* let the row grow as wide as its children sum */
   }
 
