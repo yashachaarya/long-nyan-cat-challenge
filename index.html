@@ -154,6 +154,10 @@
     );
     animation: rainbow-piece-zig 0.42s steps(1) infinite;
     animation-play-state: paused;
+    /* Isolate each piece so layout/style/paint changes don't ripple across
+       siblings. Critical for keeping scroll smooth as the piece count grows
+       into the thousands — without this, every paint walks the full row. */
+    contain: layout style paint;
   }
   /* Alternating phase: even pieces zig in sync, odd pieces are 180° out of phase */
   .rainbow-piece:nth-child(odd)  { animation-delay: 0s; }
@@ -181,18 +185,15 @@
     margin-left: -40px;
   }
 
-  /* Print: spit the entire long-nyan trail across many landscape pages.
-     Mirrors the longdogechallenge.com approach:
-     - Hide UI chrome (print button, hint, scrollbar)
-     - Position .title/.status absolute so they appear once at top-left of page 1
-       instead of repeating on every printed page (fixed elements repeat).
-     - Release viewport height/overflow constraints so the browser is free to
-       paginate the wide rainbow across pages.
-     - Force animations to a single static frame (frame1) so the printed cat
-       isn't a half-rendered mid-animation blank.
-     - Landscape pages with zero margin maximise printed rainbow per page. */
+  /* Print: each printed page = one viewport. Pages = how many viewport-widths
+     the user has scrolled across (1 if they haven't scrolled). The print
+     button handler dynamically builds N page-divs (one per viewport slice)
+     and injects an @page rule whose size matches the live viewport. The
+     static @media print rules below (1) hide UI chrome, (2) freeze the cat
+     on a single animation frame for a clean print, and (3) make the
+     dynamic #print-root visible. */
   @media print {
-    @page { size: landscape; margin: 0; }
+    @page { size: landscape; margin: 0; }   /* fallback for direct Cmd+P */
 
     html, body {
       overflow: visible !important;
@@ -203,34 +204,62 @@
       print-color-adjust: exact;
     }
 
-    .print-btn, .hint { display: none !important; }
-
-    .title, .status {
+    /* When the print-flow is active, hide everything in <body> EXCEPT the
+       dynamically-built #print-root + the title/status overlays (which
+       become absolute so they appear once at the top of page 1). */
+    body.printing > * { display: none !important; }
+    body.printing > #print-root { display: block !important; }
+    body.printing > .title,
+    body.printing > .status {
+      display: block !important;
       position: absolute !important;
       color: #fff !important;
       background: rgba(0,0,0,0.55);
+      z-index: 999;
     }
 
-    .nyan-scene {
-      height: auto !important;       /* don't reserve a full viewport height per page */
-      padding-left: 24px !important; /* shrink from 25vw to a small print margin */
-      padding-top: 80px;             /* leave room for the printed title at top of page 1 */
-      width: max-content;            /* natural row width — browser paginates across pages */
+    /* Each page is exactly one viewport. overflow:hidden clips the slice;
+       page-break-after pushes the next slice to a fresh page. */
+    .print-page {
+      position: relative;
+      overflow: hidden;
+      page-break-after: always;
+      break-after: page;
+      background: radial-gradient(circle at center, #005093 0%, #002953 100%);
+    }
+    .print-page:last-child {
+      page-break-after: auto;
+      break-after: auto;
     }
 
-    /* Freeze cat on frame1 and stop the bob so print captures a clean pose */
-    .nyan-cat, .nyan-cat * { animation: none !important; }
-    .nyan-cat .cat-frame { opacity: 0 !important; }
-    .nyan-cat #cat-frame1 { opacity: 1 !important; }
+    /* Freeze cat on frame1 inside print pages so the printed cat isn't a
+       half-rendered mid-animation blank. */
+    .print-page .nyan-cat,
+    .print-page .nyan-cat * { animation: none !important; }
+    .print-page .nyan-cat .cat-frame { opacity: 0 !important; }
+    .print-page .nyan-cat #cat-frame1 { opacity: 1 !important; }
 
-    /* Stop rainbow zig-zag in print so pieces line up flat across pages */
-    .rainbow, .rainbow-piece {
+    /* Kill rainbow zig-zag so adjacent slices line up flat across page boundaries. */
+    .print-page .rainbow,
+    .print-page .rainbow-piece {
       animation: none !important;
       transform: none !important;
     }
 
-    /* Hide the dark fade end-cap; otherwise it bleeds onto a fresh page */
-    .rainbow-end { display: none !important; }
+    /* Hide the dark fade end-cap inside print pages */
+    .print-page .rainbow-end { display: none !important; }
+
+    /* Fallback path (direct Cmd+P without clicking the button): keep the
+       basic clean-pose styling on the live scene so it isn't half-animated. */
+    .print-btn, .hint { display: none !important; }
+    .nyan-cat, .nyan-cat * { animation: none !important; }
+    .nyan-cat .cat-frame { opacity: 0 !important; }
+    .nyan-cat #cat-frame1 { opacity: 1 !important; }
+    .rainbow, .rainbow-piece { animation: none !important; transform: none !important; }
+  }
+  /* On screen, the dynamically-built print container is hidden. */
+  @media screen {
+    #print-root { display: none; }
   }
 
 </style>
@@ -550,23 +579,34 @@
     moveTimer = setTimeout(() => document.body.classList.remove('moving'), 120);
   }
 
-  /* Wheel-axis translation. The original site's wheel "just works" because
-     its scroll axis is vertical, which matches a mouse wheel's natural axis.
-     Our scroll axis is horizontal, so a regular wheel mouse (which only emits
-     deltaY) would do nothing without this translator. We only intervene when
-     the user's input is predominantly vertical — if they're already producing
-     horizontal delta (Mac trackpad two-finger swipe, shift+wheel, horizontal
-     scroll wheel), we leave the browser alone. */
+  /* Wheel-axis translation, rAF-throttled.
+     The original site's wheel "just works" because its scroll axis is vertical
+     (matches a mouse wheel's natural axis). Our axis is horizontal, so a
+     regular wheel mouse (only deltaY) would do nothing without this translator.
+     We accumulate wheel deltas and apply ONE scrollBy per animation frame —
+     calling scrollBy on every wheel event triggers reflow per event and
+     visibly lags. Only intervene when input is predominantly vertical; if the
+     user is already producing deltaX (trackpad horizontal, shift+wheel),
+     leave the browser alone. */
+  let pendingWheelDelta = 0;
+  let wheelRafId = 0;
+  function flushWheel() {
+    wheelRafId = 0;
+    if (pendingWheelDelta !== 0) {
+      window.scrollBy({ left: pendingWheelDelta, top: 0, behavior: 'auto' });
+      pendingWheelDelta = 0;
+    }
+  }
   window.addEventListener('wheel', (e) => {
     if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      window.scrollBy({ left: e.deltaY, top: 0, behavior: 'auto' });
+      pendingWheelDelta += e.deltaY;
+      if (!wheelRafId) wheelRafId = requestAnimationFrame(flushWheel);
       e.preventDefault();
     }
   }, { passive: false });
 
-  /* Arrow-key support too — Up/Down (and PageUp/Down) make the trail advance,
-     not just Left/Right, so it feels natural regardless of which axis the
-     user instinctively reaches for. */
+  /* Arrow / Page / Home / End / Space — make the trail advance whichever
+     axis the user instinctively reaches for. */
   window.addEventListener('keydown', (e) => {
     const KEY_STEP = 80;
     const PAGE_STEP = window.innerWidth * 0.9;
@@ -576,32 +616,95 @@
     else if (e.key === 'PageDown' || e.key === ' ')       dx = PAGE_STEP;
     else if (e.key === 'PageUp')                          dx = -PAGE_STEP;
     else if (e.key === 'Home')                            { window.scrollTo(0, 0); return; }
-    else if (e.key === 'End')                             { window.scrollTo(document.body.offsetWidth, 0); return; }
+    else if (e.key === 'End')                             { window.scrollTo(document.documentElement.scrollWidth, 0); return; }
     else return;
     window.scrollBy({ left: dx, top: 0, behavior: 'auto' });
     e.preventDefault();
   });
 
-  // Native scroll listener — fires regardless of which input triggered scroll
-  // (wheel translator above, scrollbar drag, trackpad horizontal, keys).
-  window.addEventListener('scroll', () => {
+  /* Scroll listener, rAF-throttled. Scroll events fire 60+ times/sec on
+     trackpads and each handler invocation reads scrollX (forces layout) and
+     toggles DOM — coalesce into one update per frame. */
+  let scrollRafId = 0;
+  function handleScroll() {
+    scrollRafId = 0;
     updateMiles();
     markMoving();
-    // Mirror of the original's onscroll fallback:
-    // if (window.innerHeight + window.pageYOffset >= document.body.offsetHeight) injectNeck(...)
-    if (window.innerWidth + window.pageXOffset >= document.body.offsetWidth - 1) {
+    /* "At end of doc" fallback. CRITICAL: must use documentElement.scrollWidth,
+       NOT body.offsetWidth — body is a block element, so its width is locked
+       to its containing block (html = viewport) regardless of how wide its
+       content overflows. body.offsetWidth would always equal innerWidth here,
+       making this check fire on every scroll event and runaway-injecting
+       pieces (the lag source). scrollWidth includes the overflow correctly. */
+    if (window.innerWidth + window.pageXOffset >= document.documentElement.scrollWidth - 1) {
       injectPieces();
     }
+  }
+  window.addEventListener('scroll', () => {
+    if (!scrollRafId) scrollRafId = requestAnimationFrame(handleScroll);
   }, { passive: true });
 
   updateMiles();
 
-  /* Print: ensure there's a generous trail in the document before invoking
-     the system dialog so the printed output reflects the user's progress. */
+  /* Print flow: 1 viewport = 1 page, page count = number of viewport-widths
+     the user has scrolled across. Build N viewport-sized .print-page divs,
+     each containing a clone of the scene shifted by translateX(-i*vw) so it
+     shows the i-th horizontal slice. Inject @page {size: vw vh} so each
+     printed page matches the live viewport exactly. After window.print()
+     returns (or the dialog closes), tear everything back down. */
   document.getElementById('printBtn').addEventListener('click', () => {
-    // Force a few extra batches so the printed rainbow doesn't end abruptly.
-    injectPieces();
-    requestAnimationFrame(() => window.print());
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // ceil((scrollX + vw) / vw) → 1 page when scrollX=0, 2 when scrolled vw, etc.
+    const numPages = Math.max(1, Math.ceil((window.scrollX + vw) / vw));
+    const totalContentWidth = numPages * vw;
+
+    // Make sure the rainbow extends across all requested pages so the last
+    // page doesn't end in mid-air. Inject batches until the scroll-width is
+    // wide enough. Use documentElement.scrollWidth (NOT body.offsetWidth) for
+    // the same reason as the scroll handler — body.offsetWidth is locked to
+    // the viewport since html is the scroll container.
+    let safety = 200; // hard cap to prevent infinite loop on a stuck layout
+    while (document.documentElement.scrollWidth < totalContentWidth && safety-- > 0) {
+      injectPieces();
+    }
+
+    // Build the print-only DOM: N pages, each a viewport-sized window into
+    // the same wide scene, shifted leftward by i*vw to reveal the i-th slice.
+    const scene = document.querySelector('.nyan-scene');
+    const printRoot = document.createElement('div');
+    printRoot.id = 'print-root';
+    for (let i = 0; i < numPages; i++) {
+      const page = document.createElement('div');
+      page.className = 'print-page';
+      page.style.cssText = `width: ${vw}px; height: ${vh}px;`;
+      const slice = scene.cloneNode(true);
+      slice.style.cssText = `position: absolute; left: 0; top: 0; transform: translateX(${-i * vw}px);`;
+      page.appendChild(slice);
+      printRoot.appendChild(page);
+    }
+    document.body.appendChild(printRoot);
+
+    // Inject @page rule sized to the live viewport. !important needed because
+    // the static @media print block has a fallback @page { size: landscape }.
+    const styleEl = document.createElement('style');
+    styleEl.id = 'dynamic-print-style';
+    styleEl.textContent = `@media print { @page { size: ${vw}px ${vh}px !important; margin: 0 !important; } }`;
+    document.head.appendChild(styleEl);
+
+    document.body.classList.add('printing');
+
+    // Give layout one frame to settle, then trigger the print dialog.
+    requestAnimationFrame(() => {
+      window.print();
+      // Tear-down. window.print() blocks in some browsers and returns
+      // immediately in others; setTimeout covers both cases.
+      setTimeout(() => {
+        document.body.classList.remove('printing');
+        styleEl.remove();
+        printRoot.remove();
+      }, 1500);
+    });
   });
 </script>
 
