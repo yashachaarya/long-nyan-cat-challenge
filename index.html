@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Long Nyan Cat Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Fredoka:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+
+  /* Native horizontal scrolling — same pattern as longdogechallenge.com
+     (vertical there, horizontal here). No wheel hijack: the browser does
+     the scrolling. Document width grows organically as more rainbow pieces
+     are appended via IntersectionObserver. */
+  html {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    color: #fff;
+    font-family: 'Fredoka', 'Courier New', monospace;
+    background: radial-gradient(circle at center, #005093 0%, #002953 100%);
+    background-attachment: fixed;
+  }
+
+  .title {
+    position: fixed;
+    top: 14px;
+    left: 24px;
+    font-family: 'Permanent Marker', cursive;
+    font-size: 30px;
+    color: #fff;
+    text-shadow: 2px 2px 0 #ff3f8a;
+    z-index: 100;
+  }
+
+  .print-btn {
+    position: fixed;
+    top: 14px;
+    right: 24px;
+    font-family: 'Permanent Marker', cursive;
+    font-size: 30px;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: #fff;
+    text-shadow: 2px 2px 0 #00a8ff;
+    z-index: 100;
+  }
+  .print-btn:hover { color: #ffe84a; }
+
+  .status {
+    position: fixed;
+    top: 64px;
+    left: 24px;
+    font-size: 16px;
+    line-height: 1.4;
+    z-index: 100;
+    background: rgba(0,0,0,0.55);
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
+  .status b { font-weight: 700; color: #ffe84a; }
+
+  .hint {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    color: #ccc;
+    pointer-events: none;
+    background: rgba(0,0,0,0.4);
+    padding: 4px 10px;
+    border-radius: 6px;
+  }
+
+  /* Cat scene lives in the document flow (NOT fixed), so as more rainbow
+     pieces are appended, the document grows wider and native horizontal
+     scroll covers the new ground — exactly mirroring longdogechallenge's
+     vertical layout (head at top of doc, body extends downward, body
+     height grows with each injected neck). Here: cat at left of doc, trail
+     extends rightward, body width grows with each injected rainbow piece.
+     Vertical centering done by .nyan-scene being a 100vh flex container. */
+  .nyan-scene {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    height: 100vh;
+    padding-left: 25vw;   /* cat starts ~1/4 from the left of the viewport */
+    width: max-content;   /* let the row grow as wide as its children sum */
+  }
+
+  .nyan-cat {
+    flex-shrink: 0;
+    width: 340px;
+    height: 210px;
+    position: relative;
+    animation: bob 0.45s ease-in-out infinite alternate;
+    animation-play-state: paused;
+    z-index: 5;
+  }
+  /* Cat is flipped to face LEFT (running right→left), so the rainbow trail
+     naturally flows out the back of the cat to the RIGHT across the screen. */
+  .nyan-cat svg { width: 100%; height: 100%; display: block; image-rendering: pixelated; transform: scaleX(-1); }
+  /* pause both the outer bob AND every inner frame animation while idle.
+     !important is needed because the inner SVG uses ID selectors (#cat-frame1, ...)
+     which have higher specificity than our descendant selector. */
+  .nyan-cat, .nyan-cat * { animation-play-state: paused !important; }
+  body.moving .nyan-cat, body.moving .nyan-cat * { animation-play-state: running !important; }
+  /* freeze on frame1 when idle so the cat is visible at rest */
+  body:not(.moving) .nyan-cat .cat-frame { opacity: 0; }
+  body:not(.moving) .nyan-cat #cat-frame1 { opacity: 1; }
+
+  @keyframes bob {
+    from { transform: translateY(0); }
+    to   { transform: translateY(-10px); }
+  }
+
+  /* Horizontal rainbow row: pieces are 60×108 with vertical color stripes,
+     stacked left→right. Pieces zig-zag vertically in alternating phase +
+     the whole row gently bobs horizontally. */
+  .rainbow {
+    flex-shrink: 0;
+    height: 140px;
+    margin-left: -40px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    image-rendering: pixelated;
+    animation: rainbow-row-bob 0.42s steps(1) infinite;
+    animation-play-state: paused;
+  }
+  .rainbow-piece {
+    flex-shrink: 0;
+    width: 60px;
+    height: 108px;
+    background: linear-gradient(
+      to bottom,
+      #FD1B00 0%, #FD1B00 16.66%,
+      #FD9B01 16.66%, #FD9B01 33.33%,
+      #FDEF01 33.33%, #FDEF01 50%,
+      #20DB01 50%, #20DB01 66.66%,
+      #008AFC 66.66%, #008AFC 83.33%,
+      #6D3FFC 83.33%, #6D3FFC 100%
+    );
+    animation: rainbow-piece-zig 0.42s steps(1) infinite;
+    animation-play-state: paused;
+  }
+  /* Alternating phase: even pieces zig in sync, odd pieces are 180° out of phase */
+  .rainbow-piece:nth-child(odd)  { animation-delay: 0s; }
+  .rainbow-piece:nth-child(even) { animation-delay: -0.21s; }
+
+  body.moving .rainbow,
+  body.moving .rainbow-piece { animation-play-state: running; }
+
+  @keyframes rainbow-piece-zig {
+    0%, 49.99%   { transform: translateY(0); }
+    50%, 100%    { transform: translateY(8px); }
+  }
+  @keyframes rainbow-row-bob {
+    0%, 49.99%   { transform: translateX(0); }
+    50%, 100%    { transform: translateX(-6px); }
+  }
+
+  /* Pixelated fade on the trailing (right) end of the rainbow so it doesn't
+     just cut off flat. Dark on the far right, transparent where it meets the rainbow. */
+  .rainbow-end {
+    flex-shrink: 0;
+    width: 60px;
+    height: 140px;
+    background: linear-gradient(to left, #08081a, rgba(8,8,26,0));
+    margin-left: -40px;
+  }
+
+  /* Print: spit the entire long-nyan trail across many landscape pages.
+     Mirrors the longdogechallenge.com approach:
+     - Hide UI chrome (print button, hint, scrollbar)
+     - Position .title/.status absolute so they appear once at top-left of page 1
+       instead of repeating on every printed page (fixed elements repeat).
+     - Release viewport height/overflow constraints so the browser is free to
+       paginate the wide rainbow across pages.
+     - Force animations to a single static frame (frame1) so the printed cat
+       isn't a half-rendered mid-animation blank.
+     - Landscape pages with zero margin maximise printed rainbow per page. */
+  @media print {
+    @page { size: landscape; margin: 0; }
+
+    html, body {
+      overflow: visible !important;
+      height: auto !important;
+      width: auto !important;
+      background: #002953 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .print-btn, .hint { display: none !important; }
+
+    .title, .status {
+      position: absolute !important;
+      color: #fff !important;
+      background: rgba(0,0,0,0.55);
+    }
+
+    .nyan-scene {
+      height: auto !important;       /* don't reserve a full viewport height per page */
+      padding-left: 24px !important; /* shrink from 25vw to a small print margin */
+      padding-top: 80px;             /* leave room for the printed title at top of page 1 */
+      width: max-content;            /* natural row width — browser paginates across pages */
+    }
+
+    /* Freeze cat on frame1 and stop the bob so print captures a clean pose */
+    .nyan-cat, .nyan-cat * { animation: none !important; }
+    .nyan-cat .cat-frame { opacity: 0 !important; }
+    .nyan-cat #cat-frame1 { opacity: 1 !important; }
+
+    /* Stop rainbow zig-zag in print so pieces line up flat across pages */
+    .rainbow, .rainbow-piece {
+      animation: none !important;
+      transform: none !important;
+    }
+
+    /* Hide the dark fade end-cap; otherwise it bleeds onto a fresh page */
+    .rainbow-end { display: none !important; }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="title">LONG NYAN CAT CHALLENGE</div>
+<button class="print-btn" id="printBtn">CLICK TO PRINT!</button>
+
+<div class="status">
+  Your nyan is <b id="adj">smol</b> long<br>
+  You have traveled <b id="count">0</b> space miles
+</div>
+
+<div class="hint">scroll right → and right → and right →</div>
+
+<div class="nyan-scene">
+  <!-- Cat on the LEFT (facing left), rainbow row to its right, trail fade end on the far RIGHT. -->
+  <!-- NYAN CAT: Gowee/nyancat-svg (MIT) - animated 6-frame pixel nyan cat -->
+  <div class="nyan-cat">
+    <svg viewBox="0 0 34 21" preserveAspectRatio="xMinYMin meet" xmlns="http://www.w3.org/2000/svg">
+      <style>
+        .cat-frame { opacity: 0; }
+        #cat-frame1 { animation: catrun 0.42s linear 0s    infinite; }
+        #cat-frame2 { animation: catrun 0.42s linear 0.07s infinite; }
+        #cat-frame3 { animation: catrun 0.42s linear 0.14s infinite; }
+        #cat-frame4 { animation: catrun 0.42s linear 0.21s infinite; }
+        #cat-frame5 { animation: catrun 0.42s linear 0.28s infinite; }
+        #cat-frame6 { animation: catrun 0.42s linear 0.35s infinite; }
+        @keyframes catrun {
+          0%       { opacity: 1; }
+          16.666%  { opacity: 1; }
+          16.667%  { opacity: 0; }
+          100%     { opacity: 0; }
+        }
+      </style>
+      <g id="cat-frame1" class="cat-frame">
+        <g transform="translate(1,0)"><g transform="translate(4,-1032.3622)">
+          <path d="m 0,50 0,-3 1,0 0,-1 4,0 0,3 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 1,49 0,-2 3,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#999"/>
+        </g><g transform="translate(4,-1032.3622)">
+          <path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/>
+        </g><g transform="matrix(-1,0,0,1,29,-1032.3622)">
+          <path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/>
+        </g><g transform="translate(0,-1032.3622)">
+          <path d="m 24,49 0,-1 4,0 0,1 -1,0 0,1 -2,0 0,-1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 25,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/>
+        </g><g transform="translate(0,-1032.3622)">
+          <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+          <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+          <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+          <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+        </g><g transform="translate(6,0)"><g>
+          <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+          <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+          <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+          <path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+          <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+          <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+          <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+        </g></g><g>
+          <path d="M 0,10 0,7 4,7 4,8 5,8 5,9 6,9 6,14 5,14 5,13 3,13 3,12 2,12 2,11 1,11 1,10 z" fill="#000"/>
+          <path d="m 1,9 0,-1 2,0 0,1 1,0 0,1 1,0 0,1 1,0 0,1 -2,0 0,-1 -1,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+        </g></g>
+      </g>
+      <g id="cat-frame2" class="cat-frame">
+        <g transform="translate(1,-1)"><g transform="translate(0,-1031.3622)">
+          <g><path d="m 5,20 0,-3 1,0 0,-1 3,0 0,3 -1,0 0,1 z" transform="translate(0,1032.3622)" fill="#000"/>
+          <path d="m 6,17 2,0 0,2 -2,0 z" transform="translate(0,1032.3622)" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,20,0)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,30,0)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g>
+            <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+            <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+            <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+            <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+          </g>
+          <g transform="translate(7,1032.3622)"><g>
+            <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+            <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+            <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/><path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+            <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+            <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+            <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+            <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          </g></g>
+          <g transform="matrix(-1,0,0,1,35,0)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g>
+            <path d="m 1,12 -1,0 0,-2 1,0 0,-1 2,0 0,1 1,0 0,1 2,0 0,4 -2,0 0,-1 -2,0 0,-1 -1,0 z" transform="translate(0,1032.3622)" fill="#000"/>
+            <path d="m 1,12 0,-2 2,0 0,2 3,0 0,2 -2,0 0,-1 -2,0 0,-1 z" transform="translate(0,1032.3622)" fill="#999"/>
+          </g>
+        </g></g>
+      </g>
+      <g id="cat-frame3" class="cat-frame">
+        <g transform="translate(1,1)">
+          <g><path d="m 6,20 0,-4 4,0 0,3 -1,0 0,1 z" fill="#000"/><path d="m 7,17 2,0 0,2 -2,0 z" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,21,-1032.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,31,-1032.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(0,-1032.3622)">
+            <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+            <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+            <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+            <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+          </g>
+          <g transform="translate(7,0)"><g>
+            <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+            <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+            <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/><path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+            <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+            <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+            <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+            <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          </g></g>
+          <g transform="matrix(-1,0,0,1,36,-1032.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g>
+            <path d="m 0,14 0,-2 2,0 0,-1 3,0 0,-1 1,0 0,4 -1,0 0,1 -4,0 0,-1 z" fill="#000"/>
+            <path d="m 1,14 0,-1 1,0 0,-1 4,0 0,1 -2,0 0,1 z" fill="#999"/>
+          </g>
+        </g>
+      </g>
+      <g id="cat-frame4" class="cat-frame">
+        <g transform="translate(1,0)">
+          <g transform="translate(0,-1031.3622)">
+            <path d="m 5,20 0,-3 1,0 0,-1 3,0 0,3 -1,0 0,1 z" transform="translate(0,1032.3622)" fill="#000"/>
+            <path d="m 6,17 2,0 0,2 -2,0 z" transform="translate(0,1032.3622)" fill="#999"/>
+          </g>
+          <g transform="matrix(-1,0,0,1,20,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,30,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(0,-1031.3622)">
+            <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+            <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+            <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+            <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+          </g>
+          <g transform="translate(7,1)"><g>
+            <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+            <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+            <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/><path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+            <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+            <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+            <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+            <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          </g></g>
+          <g transform="matrix(-1,0,0,1,35,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="matrix(1,0,0,-1,0,1058.3622)">
+            <path d="m 1,12 -1,0 0,-2 1,0 0,-1 2,0 0,1 1,0 0,1 2,0 0,4 -2,0 0,-1 -2,0 0,-1 -1,0 z" transform="translate(0,1032.3622)" fill="#000"/>
+            <path d="m 1,12 0,-2 2,0 0,2 3,0 0,2 -2,0 0,-1 -2,0 0,-1 z" transform="translate(0,1032.3622)" fill="#999"/>
+          </g>
+        </g>
+      </g>
+      <g id="cat-frame5" class="cat-frame">
+        <g transform="translate(1,0)">
+          <g transform="translate(0,1)">
+            <path d="m 3,20 0,-3 1,0 0,-1 1,0 0,-1 3,0 0,3 -1,0 0,1 -1,0 0,1 z" fill="#000"/>
+            <path d="m 4,19 0,-2 1,0 0,-1 2,0 0,2 -1,0 0,1 z" fill="#999"/>
+          </g>
+          <g transform="matrix(-1,0,0,1,20,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="matrix(-1,0,0,1,28,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(0,-1031.3622)">
+            <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+            <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+            <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+            <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+          </g>
+          <g transform="translate(6,1)"><g>
+            <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+            <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+            <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/><path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+            <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+            <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+            <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+            <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          </g></g>
+          <g transform="matrix(-1,0,0,1,33,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(0,1)">
+            <path d="M -1,11 -1,9 0,9 0,8 4,8 4,9 6,9 6,13 4,13 4,12 1,12 1,11 z" fill="#000"/>
+            <path d="m 0,10 0,-1 3,0 0,1 2,0 0,1 1,0 0,1 -1,0 0,-1 -4,0 0,-1 z" fill="#999"/>
+          </g>
+        </g>
+      </g>
+      <g id="cat-frame6" class="cat-frame">
+        <g transform="translate(1,0)">
+          <g transform="translate(0,1)">
+            <path d="m 3,20 0,-3 1,0 0,-1 1,0 0,-1 3,0 0,3 -1,0 0,1 -1,0 0,1 z" fill="#000"/>
+            <path d="m 4,19 0,-2 1,0 0,-1 1,0 0,1 1,0 0,1 -1,0 0,1 z" fill="#999"/>
+          </g>
+          <g transform="matrix(-1,0,0,1,32,-1031.3622)">
+            <path d="m 5,20 0,-3 1,0 0,-1 3,0 0,3 -1,0 0,1 z" transform="translate(0,1032.3622)" fill="#000"/>
+            <path d="m 6,17 2,0 0,2 -2,0 z" transform="translate(0,1032.3622)" fill="#999"/>
+          </g>
+          <g transform="translate(3,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(12,-1031.3622)"><path d="m 6,50 0,-2 4,0 0,1 -1,0 0,1 z" transform="translate(0,1002.3622)" fill="#000"/>
+          <path d="m 7,48 2,0 0,1 -2,0 z" transform="translate(0,1002.3622)" fill="#999"/></g>
+          <g transform="translate(0,-1031.3622)">
+            <path d="m 7,1033.3622 19,0 0,16 -19,0 z" fill="#ffcc99"/>
+            <path d="m 8,1046.3622 0,-10 1,0 0,-1 1,0 0,-1 13,0 0,1 1,0 0,1 1,0 0,10 -1,0 0,1 -1,0 0,1 -13,0 0,-1 -1,0 0,-1 z" fill="#ff99ff"/>
+            <path d="m 22,1037.3622 1,0 0,1 -1,0 z m -4,-2 1,0 0,1 -1,0 z m -3,0 1,0 0,1 -1,0 z m -1,4 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m -2,3 1,0 0,1 -1,0 z m -2,-4 1,0 0,1 -1,0 z m -2,2 1,0 0,1 -1,0 z m 1,3 1,0 0,1 -1,0 z m 0,-10 1,0 0,1 -1,0 z" fill="#ff3399"/>
+            <path d="m 8,1049.3622 17,0 0,1 -17,0 z m 0,-17 17,0 0,1 -17,0 z m 18,16 0,-14 1,0 0,14 z m -20,0 0,-14 1,0 0,14 z m 1,0 1,0 0,1 -1,0 z m 0,-15 1,0 0,1 -1,0 z m 18,0 1,0 0,1 -1,0 z m 0,15 1,0 0,1 -1,0 z" fill="#000"/>
+          </g>
+          <g transform="translate(6,0)"><g>
+            <path d="m 11,15 0,-5 1,0 0,-4 2,0 0,1 1,0 0,1 1,0 0,1 4,0 0,-1 1,0 0,-1 1,0 0,-1 2,0 0,4 1,0 0,5 -1,0 0,1 -1,0 0,1 -10,0 0,-1 -1,0 0,-1 z" fill="#999"/>
+            <path d="m 23,16 1,0 0,1 -1,0 z m 1,-1 1,0 0,1 -1,0 z m 1,-5 1,0 0,5 -1,0 z m -1,-4 1,0 0,4 -1,0 z m -2,-1 2,0 0,1 -2,0 z m -6,3 4,0 0,1 -4,0 z m -4,-3 2,0 0,1 -2,0 z m -1,1 1,0 0,4 -1,0 z m -1,4 1,0 0,5 -1,0 z m 11,-4 1,0 0,1 -1,0 z m -1,1 1,0 0,1 -1,0 z m -5,0 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z m -1,11 10,0 0,1 -10,0 z m -1,-1 1,0 0,1 -1,0 z m -1,-1 1,0 0,1 -1,0 z" fill="#000"/>
+            <path d="m 12,13 2,0 0,2 -2,0 z" fill="#ff9999"/><path d="m 23,13 2,0 0,2 -2,0 z" fill="#ff9999"/>
+            <path d="m 15,16 0,-2 1,0 0,1 2,0 0,-1 1,0 0,1 2,0 0,-1 1,0 0,2 z" fill="#000"/>
+            <path d="m 19,12 1,0 0,1 -1,0 z" fill="#000"/>
+            <g><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+            <g transform="translate(-7,0)"><path d="m 21,13 0,-1 1,0 0,-1 1,0 0,2 z" fill="#000"/><path d="m 21,11 1,0 0,1 -1,0 z" fill="#fff"/></g>
+          </g></g>
+          <g transform="translate(0,-1033.3622)">
+            <path d="m 1,12 -1,0 0,-2 1,0 0,-1 2,0 0,1 1,0 0,1 2,0 0,4 -2,0 0,-1 -2,0 0,-1 -1,0 z" transform="translate(0,1032.3622)" fill="#000"/>
+            <path d="m 1,12 0,-2 2,0 0,2 3,0 0,2 -2,0 0,-1 -2,0 0,-1 z" transform="translate(0,1032.3622)" fill="#999"/>
+          </g>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <div class="rainbow" id="rainbow"></div>
+  <div class="rainbow-end"></div>
+</div>
+
+<script>
+  /* Mirror of longdogechallenge.com's scroll-driven growth, but rotated 90°:
+     the original injects more <pre class="neck"> blocks BELOW as you scroll
+     DOWN; we inject more .rainbow-piece blocks to the RIGHT as you scroll
+     RIGHT. Two trigger paths, exactly like the original:
+       1) IntersectionObserver on the LAST piece — when it enters within
+          200% of the viewport width of the right edge, append more pieces
+          and switch the observer to the new last piece.
+       2) onscroll fallback — if the user scrolls all the way to the right
+          edge of the document (rare; observer almost always pre-fires),
+          force-inject another batch.                                       */
+  const countEl  = document.getElementById('count');
+  const adjEl    = document.getElementById('adj');
+  const rainbow  = document.getElementById('rainbow');
+  const PIECE_WIDTH    = 60;   // each .rainbow-piece is 60px wide
+  const PIECES_PER_BATCH = 40; // how many pieces injected per growth event
+
+  function makePiece() {
+    const p = document.createElement('div');
+    p.className = 'rainbow-piece';
+    return p;
+  }
+
+  function injectPieces() {
+    const frag = document.createDocumentFragment();
+    let lastPiece = null;
+    for (let i = 0; i < PIECES_PER_BATCH; i++) {
+      const p = makePiece();
+      frag.appendChild(p);
+      lastPiece = p;
+    }
+    rainbow.appendChild(frag);
+    // Hand the observer to the new last piece, dropping the previous one.
+    if (lastPiece) {
+      observer.disconnect();
+      observer.observe(lastPiece);
+    }
+    updateMiles();
+  }
+
+  // rootMargin extends the observer "trigger zone" by 200% of the viewport
+  // WIDTH on the right side — same idea as the original's "0px 0px 200% 0px"
+  // (which extends the bottom edge by 200% of viewport HEIGHT).
+  const observer = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.intersectionRatio > 0) {
+        injectPieces();
+        break; // only one growth event per tick
+      }
+    }
+  }, { rootMargin: '0px 200% 0px 0px' });
+
+  // Seed enough pieces to fill the initial viewport before the observer kicks in.
+  const seedCount = Math.ceil((window.innerWidth * 1.5) / PIECE_WIDTH);
+  for (let i = 0; i < seedCount; i++) rainbow.appendChild(makePiece());
+  // Start observing the seeded last piece.
+  if (rainbow.lastElementChild) observer.observe(rainbow.lastElementChild);
+
+  function adjective(n) {
+    if (n < 5)    return 'smol';
+    if (n < 20)   return 'kinda';
+    if (n < 60)   return 'pretty';
+    if (n < 150)  return 'very';
+    if (n < 400)  return 'super';
+    if (n < 1000) return 'wow';
+    if (n < 5000) return 'infinite';
+    return 'transcendent';
+  }
+
+  function updateMiles() {
+    // Miles count = how far the user has actually scrolled horizontally.
+    const miles = Math.floor(window.scrollX / 100);
+    countEl.textContent = miles.toLocaleString();
+    adjEl.textContent   = adjective(miles);
+  }
+
+  let moveTimer = null;
+  function markMoving() {
+    document.body.classList.add('moving');
+    if (moveTimer) clearTimeout(moveTimer);
+    moveTimer = setTimeout(() => document.body.classList.remove('moving'), 120);
+  }
+
+  /* Wheel-axis translation. The original site's wheel "just works" because
+     its scroll axis is vertical, which matches a mouse wheel's natural axis.
+     Our scroll axis is horizontal, so a regular wheel mouse (which only emits
+     deltaY) would do nothing without this translator. We only intervene when
+     the user's input is predominantly vertical — if they're already producing
+     horizontal delta (Mac trackpad two-finger swipe, shift+wheel, horizontal
+     scroll wheel), we leave the browser alone. */
+  window.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      window.scrollBy({ left: e.deltaY, top: 0, behavior: 'auto' });
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  /* Arrow-key support too — Up/Down (and PageUp/Down) make the trail advance,
+     not just Left/Right, so it feels natural regardless of which axis the
+     user instinctively reaches for. */
+  window.addEventListener('keydown', (e) => {
+    const KEY_STEP = 80;
+    const PAGE_STEP = window.innerWidth * 0.9;
+    let dx = 0;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') dx = KEY_STEP;
+    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') dx = -KEY_STEP;
+    else if (e.key === 'PageDown' || e.key === ' ')       dx = PAGE_STEP;
+    else if (e.key === 'PageUp')                          dx = -PAGE_STEP;
+    else if (e.key === 'Home')                            { window.scrollTo(0, 0); return; }
+    else if (e.key === 'End')                             { window.scrollTo(document.body.offsetWidth, 0); return; }
+    else return;
+    window.scrollBy({ left: dx, top: 0, behavior: 'auto' });
+    e.preventDefault();
+  });
+
+  // Native scroll listener — fires regardless of which input triggered scroll
+  // (wheel translator above, scrollbar drag, trackpad horizontal, keys).
+  window.addEventListener('scroll', () => {
+    updateMiles();
+    markMoving();
+    // Mirror of the original's onscroll fallback:
+    // if (window.innerHeight + window.pageYOffset >= document.body.offsetHeight) injectNeck(...)
+    if (window.innerWidth + window.pageXOffset >= document.body.offsetWidth - 1) {
+      injectPieces();
+    }
+  }, { passive: true });
+
+  updateMiles();
+
+  /* Print: ensure there's a generous trail in the document before invoking
+     the system dialog so the printed output reflects the user's progress. */
+  document.getElementById('printBtn').addEventListener('click', () => {
+    // Force a few extra batches so the printed rainbow doesn't end abruptly.
+    injectPieces();
+    requestAnimationFrame(() => window.print());
+  });
+</script>
+
+</body>
+</html>
