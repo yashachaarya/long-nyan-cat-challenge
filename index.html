@@ -40,9 +40,9 @@
     top: 14px;
     left: 24px;
     font-family: 'Permanent Marker', cursive;
-    font-size: 30px;
+    font-size: 22px;
     color: #fff;
-    text-shadow: 2px 2px 0 #ff3f8a;
+    text-shadow: 1.5px 1.5px 0 #ff3f8a;
     z-index: 100;
   }
 
@@ -91,7 +91,7 @@
      doesn't dominate small viewports. Font sizes, paddings, and offsets all
      reduced by ~20% from the post-viewport-meta tuned values. */
   @media (max-width: 600px) {
-    .title     { font-size: 29px; top: 10px; left: 11px; text-shadow: 1.5px 1.5px 0 #ff3f8a; }
+    .title     { font-size: 20px; top: 10px; left: 11px; text-shadow: 1px 1px 0 #ff3f8a; }
     .print-btn { font-size: 18px; top: 14px; right: 11px; padding: 5px 8px; }
     .status    { font-size: 14px; top: 56px; left: 11px; padding: 6px 10px; line-height: 1.5; }
     .hint      { font-size: 12px; bottom: 24px; padding: 5px 10px; }
@@ -109,9 +109,9 @@
     flex-direction: row;
     align-items: center;
     height: 100vh;
-    padding-left: calc(75vw - 340px);
+    padding-left: calc(75vw - 240px);
     /* Cat's RIGHT edge sits at 75vw, leaving 1/4 of the viewport (25vw) of
-       empty space to the right of the cat at scrollX=0. 340px = .nyan-cat
+       empty space to the right of the cat at scrollX=0. 240px = .nyan-cat
        width. As the user scrolls right, the cat slides off-left and the
        rainbow trail fills the viewport. */
     width: max-content;   /* let the row grow as wide as its children sum */
@@ -119,8 +119,8 @@
 
   .nyan-cat {
     flex-shrink: 0;
-    width: 340px;
-    height: 210px;
+    width: 240px;
+    height: 148px;
     position: relative;
     animation: bob 0.45s ease-in-out infinite alternate;
     animation-play-state: paused;
@@ -140,16 +140,16 @@
 
   @keyframes bob {
     from { transform: translateY(0); }
-    to   { transform: translateY(-10px); }
+    to   { transform: translateY(-7px); }
   }
 
-  /* Horizontal rainbow row: pieces are 60×108 with vertical color stripes,
+  /* Horizontal rainbow row: pieces are 42×76 with vertical color stripes,
      stacked left→right. Pieces zig-zag vertically in alternating phase +
      the whole row gently bobs horizontally. */
   .rainbow {
     flex-shrink: 0;
-    height: 140px;
-    margin-left: -40px;
+    height: 98px;
+    margin-left: -28px;
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -159,8 +159,8 @@
   }
   .rainbow-piece {
     flex-shrink: 0;
-    width: 60px;
-    height: 108px;
+    width: 42px;
+    height: 76px;
     background: linear-gradient(
       to bottom,
       #FD1B00 0%, #FD1B00 16.66%,
@@ -186,21 +186,21 @@
 
   @keyframes rainbow-piece-zig {
     0%, 49.99%   { transform: translateY(0); }
-    50%, 100%    { transform: translateY(8px); }
+    50%, 100%    { transform: translateY(6px); }
   }
   @keyframes rainbow-row-bob {
     0%, 49.99%   { transform: translateX(0); }
-    50%, 100%    { transform: translateX(-6px); }
+    50%, 100%    { transform: translateX(-4px); }
   }
 
   /* Pixelated fade on the trailing (right) end of the rainbow so it doesn't
      just cut off flat. Dark on the far right, transparent where it meets the rainbow. */
   .rainbow-end {
     flex-shrink: 0;
-    width: 60px;
-    height: 140px;
+    width: 42px;
+    height: 98px;
     background: linear-gradient(to left, #08081a, rgba(8,8,26,0));
-    margin-left: -40px;
+    margin-left: -28px;
   }
 
   /* Print: each printed page = one viewport. Pages = how many viewport-widths
@@ -536,7 +536,7 @@
   const countEl  = document.getElementById('count');
   const adjEl    = document.getElementById('adj');
   const rainbow  = document.getElementById('rainbow');
-  const PIECE_WIDTH    = 60;   // each .rainbow-piece is 60px wide
+  const PIECE_WIDTH    = 42;   // each .rainbow-piece is 42px wide
   const PIECES_PER_BATCH = 40; // how many pieces injected per growth event
 
   function makePiece() {
