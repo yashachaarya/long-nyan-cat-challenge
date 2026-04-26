@@ -87,14 +87,14 @@
     border-radius: 6px;
   }
 
-  /* Mobile: bump the fixed-position UI text and tighten layout. The viewport
-     meta tag now renders at device-width (1 CSS px = ~1 device px), so 30px
-     reads correctly — but a touch larger title and padding feel right at hand. */
+  /* Mobile (≤600px): scaled to ~80% of the previous mobile sizing so the UI
+     doesn't dominate small viewports. Font sizes, paddings, and offsets all
+     reduced by ~20% from the post-viewport-meta tuned values. */
   @media (max-width: 600px) {
-    .title     { font-size: 36px; top: 12px; left: 14px; text-shadow: 2px 2px 0 #ff3f8a; }
-    .print-btn { font-size: 22px; top: 18px; right: 14px; padding: 6px 10px; }
-    .status    { font-size: 18px; top: 70px; left: 14px; padding: 8px 12px; line-height: 1.5; }
-    .hint      { font-size: 15px; bottom: 30px; padding: 6px 12px; }
+    .title     { font-size: 29px; top: 10px; left: 11px; text-shadow: 1.5px 1.5px 0 #ff3f8a; }
+    .print-btn { font-size: 18px; top: 14px; right: 11px; padding: 5px 8px; }
+    .status    { font-size: 14px; top: 56px; left: 11px; padding: 6px 10px; line-height: 1.5; }
+    .hint      { font-size: 12px; bottom: 24px; padding: 5px 10px; }
   }
 
   /* Cat scene lives in the document flow (NOT fixed), so as more rainbow
