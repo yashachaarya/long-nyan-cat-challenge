@@ -281,12 +281,14 @@
   }
 
 </style>
-<!-- Vercel Web Analytics + Speed Insights. The standalone CDN scripts work
-     for any static site (the framework-auto-injected /_vercel/insights/* edge
-     route only runs for detected frameworks). They tie hits back to the
-     project via the deployed origin and no-op on localhost. -->
+<!-- Vercel Web Analytics. The standalone CDN script posts events directly
+     to vercel-scripts.com and works on any static site. (Speed Insights is
+     intentionally omitted: its CDN script POSTs to /_vercel/insights/view
+     on the deploy origin, an edge route only present for framework-built
+     projects. Adding it here would just produce 404s.) No-ops on localhost. -->
 <script defer src="https://va.vercel-scripts.com/v1/script.js"></script>
-<script defer src="https://va.vercel-scripts.com/v1/speed-insights/script.js"></script>
+<!-- Inline SVG favicon — rainbow square, no extra request. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='3' y='0' fill='%23ff3f8a'/%3E%3Crect width='16' height='3' y='3' fill='%23ff8a00'/%3E%3Crect width='16' height='3' y='6' fill='%23ffe84a'/%3E%3Crect width='16' height='3' y='9' fill='%2300c853'/%3E%3Crect width='16' height='4' y='12' fill='%2300a8ff'/%3E%3C/svg%3E">
 </head>
 <body>
 
