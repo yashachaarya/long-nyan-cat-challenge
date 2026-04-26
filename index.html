@@ -87,6 +87,12 @@
     border-radius: 6px;
   }
 
+  /* Responsive label swap: the title and print-btn carry both a long
+     desktop label and a short mobile label as sibling spans; CSS shows the
+     right one per viewport so they don't collide on narrow screens. */
+  .mobile-only { display: none; }
+  .desktop-only { display: inline; }
+
   /* Mobile (≤600px): scaled to ~80% of the previous mobile sizing so the UI
      doesn't dominate small viewports. Font sizes, paddings, and offsets all
      reduced by ~20% from the post-viewport-meta tuned values. */
@@ -95,6 +101,8 @@
     .print-btn { font-size: 18px; top: 14px; right: 11px; padding: 5px 8px; }
     .status    { font-size: 14px; top: 56px; left: 11px; padding: 6px 10px; line-height: 1.5; }
     .hint      { font-size: 12px; bottom: 24px; padding: 5px 10px; }
+    .desktop-only { display: none; }
+    .mobile-only { display: inline; }
   }
 
   /* Cat scene lives in the document flow (NOT fixed), so as more rainbow
@@ -292,8 +300,8 @@
 </head>
 <body>
 
-<div class="title">LONG NYAN CAT CHALLENGE</div>
-<button class="print-btn" id="printBtn">CLICK TO PRINT!</button>
+<div class="title"><span class="desktop-only">LONG NYAN CAT CHALLENGE</span><span class="mobile-only">LONG NYAN CAT</span></div>
+<button class="print-btn" id="printBtn"><span class="desktop-only">CLICK TO PRINT!</span><span class="mobile-only">PRINT</span></button>
 
 <div class="status">
   Your nyan is <b id="adj">smol</b> long<br>
