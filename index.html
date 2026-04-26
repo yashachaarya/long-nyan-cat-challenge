@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<!-- Without this, mobile browsers fake-render the page at ~980px and scale
+     down to fit — making all the fixed-px UI text shrink to unreadable. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Long Nyan Cat Challenge</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -25,6 +28,11 @@
     font-family: 'Fredoka', 'Courier New', monospace;
     background: radial-gradient(circle at center, #005093 0%, #002953 100%);
     background-attachment: fixed;
+    /* pan-x: native horizontal panning works for left/right swipes; vertical
+       swipes don't trigger pull-to-refresh / page-scroll, leaving them free
+       for our touchmove handler to translate into horizontal scroll. */
+    touch-action: pan-x;
+    overscroll-behavior: none;
   }
 
   .title {
@@ -77,6 +85,16 @@
     background: rgba(0,0,0,0.4);
     padding: 4px 10px;
     border-radius: 6px;
+  }
+
+  /* Mobile: bump the fixed-position UI text and tighten layout. The viewport
+     meta tag now renders at device-width (1 CSS px = ~1 device px), so 30px
+     reads correctly — but a touch larger title and padding feel right at hand. */
+  @media (max-width: 600px) {
+    .title     { font-size: 36px; top: 12px; left: 14px; text-shadow: 2px 2px 0 #ff3f8a; }
+    .print-btn { font-size: 22px; top: 18px; right: 14px; padding: 6px 10px; }
+    .status    { font-size: 18px; top: 70px; left: 14px; padding: 8px 12px; line-height: 1.5; }
+    .hint      { font-size: 15px; bottom: 30px; padding: 6px 12px; }
   }
 
   /* Cat scene lives in the document flow (NOT fixed), so as more rainbow
@@ -263,11 +281,12 @@
   }
 
 </style>
-<!-- Vercel Web Analytics + Speed Insights. Scripts are served by Vercel's
-     edge at /_vercel/* when the deployment runs on vercel.app or a Vercel-
-     hosted custom domain. They no-op on localhost or non-Vercel hosts. -->
-<script defer src="/_vercel/insights/script.js"></script>
-<script defer src="/_vercel/speed-insights/script.js"></script>
+<!-- Vercel Web Analytics + Speed Insights. The standalone CDN scripts work
+     for any static site (the framework-auto-injected /_vercel/insights/* edge
+     route only runs for detected frameworks). They tie hits back to the
+     project via the deployed origin and no-op on localhost. -->
+<script defer src="https://va.vercel-scripts.com/v1/script.js"></script>
+<script defer src="https://va.vercel-scripts.com/v1/speed-insights/script.js"></script>
 </head>
 <body>
 
@@ -279,7 +298,7 @@
   You have traveled <b id="count">0</b> space miles
 </div>
 
-<div class="hint">scroll right → and right → and right →</div>
+<div class="hint">scroll right → and right → and right →   (mobile: swipe up ↑)</div>
 
 <div class="nyan-scene">
   <!-- Cat on the LEFT (facing left), rainbow row to its right, trail fade end on the far RIGHT. -->
@@ -609,6 +628,53 @@
       e.preventDefault();
     }
   }, { passive: false });
+
+  /* Touch: on mobile, vertical swipes get translated to horizontal scroll so
+     the cat moves forward when you swipe up (finger moves up the screen) and
+     backward when you swipe down. Horizontal swipes pass through to native
+     pan-x (set on body) so left/right drag works as expected.
+     Detection: classify the gesture by which axis dominates total displacement
+     since touchstart. If vertical wins, hijack and translate; otherwise leave
+     it alone for native pan. rAF-throttled to coalesce multiple touchmove
+     events per frame. */
+  let pendingTouchDelta = 0;
+  let touchRafId = 0;
+  function flushTouch() {
+    touchRafId = 0;
+    if (pendingTouchDelta !== 0) {
+      window.scrollBy({ left: pendingTouchDelta, top: 0, behavior: 'auto' });
+      pendingTouchDelta = 0;
+    }
+  }
+  let lastTouchY = null, touchStartX = null, touchStartY = null;
+  window.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      lastTouchY = t.clientY;
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+    } else {
+      // Multi-touch (pinch zoom etc.) — release control.
+      lastTouchY = null;
+    }
+  }, { passive: true });
+  window.addEventListener('touchmove', (e) => {
+    if (lastTouchY === null || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    const totalDx = Math.abs(t.clientX - touchStartX);
+    const totalDy = Math.abs(t.clientY - touchStartY);
+    // Only hijack vertical-dominant gestures; horizontal goes to native pan-x.
+    if (totalDy > totalDx) {
+      // Swipe UP (finger moves up, dy<0) → cat forward (scroll RIGHT, dx>0).
+      pendingTouchDelta += -(t.clientY - lastTouchY);
+      if (!touchRafId) touchRafId = requestAnimationFrame(flushTouch);
+      e.preventDefault();
+    }
+    lastTouchY = t.clientY;
+  }, { passive: false });
+  function resetTouch() { lastTouchY = null; }
+  window.addEventListener('touchend', resetTouch, { passive: true });
+  window.addEventListener('touchcancel', resetTouch, { passive: true });
 
   /* Arrow / Page / Home / End / Space — make the trail advance whichever
      axis the user instinctively reaches for. */
